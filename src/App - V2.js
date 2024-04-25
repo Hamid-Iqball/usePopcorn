@@ -1,24 +1,18 @@
 import { toHaveErrorMessage } from "@testing-library/jest-dom/dist/matchers";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import StarRating from "./StarRating";
-import { useMovies } from "./useMovies";
-import { useLocalStorageState } from "./useLocalStorageState";
-import { useKey } from "./useKey";
 
 const average = (arr) =>
   arr.reduce((acc, cur, i, arr) => acc + cur / arr.length, 0);
+
 const KEY = "8c86df92";
-
 export default function App() {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState("inception");
+  const [movies, setMovies] = useState([]);
+  const [watched, setWatched] = useState([]);
+  const [isLoading, setISLoading] = useState(false);
+  const [error, SetError] = useState("");
   const [selectedID, setSelectedID] = useState(null);
-  const [watched, setWatched] = useLocalStorageState([], "Watched");
-
-  // const [watched, setWatched] = useState(function () {
-  //   const storedValue = localStorage.getItem("Watched");
-  //   return JSON.parse(storedValue);
-  // });
-  const { movies, isLoading, error } = useMovies(query);
 
   function handleSelectMovie(id) {
     setSelectedID((selectedID) => (id === selectedID ? null : id));
@@ -28,13 +22,47 @@ export default function App() {
   }
   function handleAddWatched(movie) {
     setWatched((watched) => [...watched, movie]);
-    // Loacal Storage
-    // localStorage.setItem("Watched", JSON.stringify([...watched, movie]));
   }
   function handleDeleteWatched(id) {
     setWatched((watched) => watched.filter((movie) => movie.imdbID !== id));
   }
-  //Coustom Hooks
+  useEffect(
+    function () {
+      const controller = new AbortController();
+      async function fetchMovies() {
+        try {
+          setISLoading(true);
+          SetError("");
+
+          const res = await fetch(
+            `http://www.omdbapi.com/?apikey=${KEY}&s=${query}`,
+            { signal: controller.signal }
+          );
+
+          if (!res.ok)
+            throw new Error("Something went wrong with fetching data");
+
+          const data = await res.json();
+          if (data.Response === "False") throw new Error("Movie not found");
+
+          setMovies(data.Search);
+          SetError(" ");
+          //   console.log(data);
+        } catch (err) {
+          if (err.name !== "AbortError") SetError(err.message);
+        } finally {
+          setISLoading(false);
+          SetError("");
+        }
+      }
+      fetchMovies();
+
+      return function () {
+        controller.abort();
+      };
+    },
+    [query, setMovies]
+  );
 
   return (
     <>
@@ -94,23 +122,6 @@ function Logo() {
 }
 
 function Search({ query, setQuery }) {
-  // Uses of Refs
-  const inputEl = useRef(null);
-
-  useEffect(
-    function () {
-      function callback(e) {
-        if (e.code === "Enter") {
-          if (document.activeElement === inputEl.current) return;
-          inputEl.current.focus();
-          setQuery("");
-        }
-      }
-      // document.addEventListener("keydown", callback);
-      return () => document.addEventListener("keydown", callback);
-    },
-    [setQuery]
-  );
   return (
     <input
       className="search"
@@ -118,7 +129,6 @@ function Search({ query, setQuery }) {
       placeholder="Search movies..."
       value={query}
       onChange={(e) => setQuery(e.target.value)}
-      ref={inputEl}
     />
   );
 }
@@ -237,8 +247,6 @@ function MovieDetails({ selectedID, onCloseMovie, onAddWatched, watched }) {
     onAddWatched(newWatchedMovie);
     onCloseMovie();
   }
-  useKey();
-
   useEffect(
     function () {
       async function getMoviesDetail() {
